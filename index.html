@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Countdown 30 min</title>
+  <style>
+    :root { --maxw: 720px; }
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background:#0b1220;
+      color:#fff;
+      display:flex;
+      justify-content:center;
+    }
+    .wrap{
+      width:100%;
+      max-width: var(--maxw);
+      padding: 18px 14px 28px;
+      box-sizing:border-box;
+    }
+    .card{
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.25);
+      backdrop-filter: blur(6px);
+    }
+    h1{
+      margin:0 0 8px;
+      font-size: 18px;
+      font-weight: 650;
+      opacity:.9;
+      letter-spacing:.2px;
+    }
+    .timer{
+      display:flex;
+      align-items:baseline;
+      gap: 10px;
+      margin-top: 6px;
+    }
+    .time{
+      font-size: 52px;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: 1px;
+    }
+    .status{
+      font-size: 13px;
+      opacity:.85;
+    }
+    .bar{
+      height: 10px;
+      background: rgba(255,255,255,.10);
+      border-radius: 999px;
+      overflow:hidden;
+      margin-top: 14px;
+    }
+    .bar > div{
+      height:100%;
+      width:100%;
+      background: rgba(255,255,255,.65);
+      transform-origin:left center;
+      transform: scaleX(1);
+      transition: transform .25s linear;
+    }
+    .actions{
+      display:flex;
+      gap:10px;
+      margin-top:14px;
+      flex-wrap:wrap;
+    }
+    button{
+      border:0;
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-weight: 650;
+      cursor:pointer;
+      background: rgba(255,255,255,.12);
+      color:#fff;
+    }
+    button:hover{ background: rgba(255,255,255,.18); }
+    button.primary{ background: rgba(0,180,255,.35); }
+    button.primary:hover{ background: rgba(0,180,255,.45); }
+    .imgBox{
+      margin-top: 16px;
+      border-radius: 18px;
+      overflow:hidden;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.04);
+    }
+    /* Imagen adaptable */
+    .imgBox img{
+      width: 100%;
+      height: auto;         /* mantiene proporción */
+      display:block;
+      object-fit: cover;    /* por si luego decides fijar altura */
+    }
+    .note{
+      margin-top:10px;
+      font-size:12px;
+      opacity:.75;
+      line-height:1.35;
+    }
+    @media (max-width: 420px){
+      .time{ font-size: 44px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Tiempo restante</h1>
+      <div class="timer">
+        <div class="time" id="time">30:00</div>
+        <div class="status" id="status">Activo</div>
+      </div>
+
+      <div class="bar" aria-hidden="true">
+        <div id="barFill"></div>
+      </div>
+
+      <div class="actions">
+        <button class="primary" id="restartBtn">Reiniciar 30:00</button>
+        <button id="pauseBtn">Pausar</button>
+        <button id="resetStorageBtn">Borrar guardado</button>
+      </div>
+
+      <div class="note">
+        *El contador se guarda en tu navegador. Si recargas, sigue donde iba.
+      </div>
+    </div>
+
+    <!-- IMAGEN ABAJO (responsive) -->
+    <div class="imgBox" style="margin-top:16px;">
+      <!-- Cambia TU_IMAGEN.jpg por tu archivo dentro del repo o por una URL -->
+      <img src="TU_IMAGEN.jpeg" alt="Imagen promocional" />
+    </div>
+  </div>
+
+  <script>
+    // ===== CONFIG =====
+    const DURATION_MS = 30 * 60 * 1000; // 30 minutos
+    const KEY_END = "countdown_end_ts";
+    const KEY_PAUSED = "countdown_paused";
+    const KEY_REMAINING = "countdown_remaining_ms";
+
+    // ===== UI =====
+    const timeEl = document.getElementById("time");
+    const statusEl = document.getElementById("status");
+    const barFill = document.getElementById("barFill");
+    const restartBtn = document.getElementById("restartBtn");
+    const pauseBtn = document.getElementById("pauseBtn");
+    const resetStorageBtn = document.getElementById("resetStorageBtn");
+
+    let rafId = null;
+
+    function pad(n){ return String(n).padStart(2,"0"); }
+
+    function format(ms){
+      ms = Math.max(0, ms);
+      const totalSec = Math.floor(ms / 1000);
+      const m = Math.floor(totalSec / 60);
+      const s = totalSec % 60;
+      return `${pad(m)}:${pad(s)}`;
+    }
+
+    function setBar(remainingMs){
+      const ratio = Math.max(0, Math.min(1, remainingMs / DURATION_MS));
+      barFill.style.transform = `scaleX(${ratio})`;
+    }
+
+    function getNow(){ return Date.now(); }
+
+    function startFresh(){
+      const end = getNow() + DURATION_MS;
+      localStorage.setItem(KEY_END, String(end));
+      localStorage.setItem(KEY_PAUSED, "0");
+      localStorage.removeItem(KEY_REMAINING);
+    }
+
+    function isPaused(){
+      return localStorage.getItem(KEY_PAUSED) === "1";
+    }
+
+    function getRemaining(){
+      if (isPaused()){
+        const rem = Number(localStorage.getItem(KEY_REMAINING) || DURATION_MS);
+        return rem;
+      }
+      const end = Number(localStorage.getItem(KEY_END) || 0);
+      return end - getNow();
+    }
+
+    function pause(){
+      if (isPaused()) return;
+      const rem = getRemaining();
+      localStorage.setItem(KEY_REMAINING, String(Math.max(0, rem)));
+      localStorage.setItem(KEY_PAUSED, "1");
+    }
+
+    function resume(){
+      if (!isPaused()) return;
+      const rem = Number(localStorage.getItem(KEY_REMAINING) || DURATION_MS);
+      const end = getNow() + rem;
+      localStorage.setItem(KEY_END, String(end));
+      localStorage.setItem(KEY_PAUSED, "0");
+      localStorage.removeItem(KEY_REMAINING);
+    }
+
+    function tick(){
+      const rem = getRemaining();
+      timeEl.textContent = format(rem);
+      setBar(rem);
+
+      if (isPaused()){
+        statusEl.textContent = "Pausado";
+        pauseBtn.textContent = "Reanudar";
+      } else {
+        statusEl.textContent = rem <= 0 ? "Finalizado" : "Activo";
+        pauseBtn.textContent = "Pausar";
+      }
+
+      if (!isPaused() && rem <= 0){
+        // Cuando acaba, lo dejamos en 00:00 sin reiniciar automático
+        statusEl.textContent = "Finalizado";
+        timeEl.textContent = "00:00";
+        setBar(0);
+        cancelAnimationFrame(rafId);
+        rafId = null;
+        return;
+      }
+
+      rafId = requestAnimationFrame(tick);
+    }
+
+    // ===== INIT =====
+    (function init(){
+      // Si no hay end guardado, arranca automáticamente
+      const hasEnd = !!localStorage.getItem(KEY_END);
+      if (!hasEnd) startFresh();
+
+      // Si quedó guardado en pausa pero sin remaining, lo reparamos
+      if (isPaused() && !localStorage.getItem(KEY_REMAINING)){
+        localStorage.setItem(KEY_REMAINING, String(DURATION_MS));
+      }
+
+      if (!rafId) tick();
+    })();
+
+    // ===== EVENTS =====
+    restartBtn.addEventListener("click", () => {
+      startFresh();
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = null;
+      tick();
+    });
+
+    pauseBtn.addEventListener("click", () => {
+      if (isPaused()) resume();
+      else pause();
+
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = null;
+      tick();
+    });
+
+    resetStorageBtn.addEventListener("click", () => {
+      localStorage.removeItem(KEY_END);
+      localStorage.removeItem(KEY_PAUSED);
+      localStorage.removeItem(KEY_REMAINING);
+      startFresh();
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = null;
+      tick();
+    });
+  </script>
+</body>
+</html>
